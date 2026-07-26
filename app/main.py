@@ -8,8 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .prompt import build_system_prompt, MODEL
-from .schemas import AnalysisResponse, ComprehensionRequest
-from .render import render_pdf, render_comprehension_pdf
+from .schemas import AnalysisResponse
+from .render import render_pdf
 from .thesaurus import enrich_vocabulary
 
 app = FastAPI(title="영어 학습자료 제작소")
@@ -30,8 +30,9 @@ if COMBINED_DIR.exists():
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "passage-analyzer-outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-MAX_TOKENS = 20000  # Sonnet 5 동기 API 한도는 128K. adaptive thinking이 기본으로 켜져있어
-                     # (thinking + 응답 텍스트가 이 budget을 공유) 지문이 길면 이 값을 더 올리세요.
+MAX_TOKENS = 60000  # Gemini 3.x는 내부 thinking 토큰도 이 예산을 같이 나눠 씀.
+                     # 20000이었을 때 20문장짜리 긴 지문에서 중간에 잘리는 문제가 있어서
+                     # 모델 한도(약 65,536)에 최대한 가깝게 올림.
 
 
 class PromptConfigResponse(BaseModel):
@@ -74,23 +75,12 @@ def render(analysis: AnalysisResponse):
     return RenderResponse(job_id=job_id, download_url=f"/download/{job_id}")
 
 
-@app.post("/render-comprehension", response_model=RenderResponse)
-def render_comprehension(req: ComprehensionRequest):
-    """브라우저에서 이미 Gemini로 O/X 문제까지 만든 JSON을 받아 PDF로 렌더링한다.
-    이 엔드포인트도 LLM을 호출하지 않으므로 API 키가 필요 없다."""
-    job_id = f"ox-{uuid.uuid4()}"
-    pdf_path = OUTPUT_DIR / f"{job_id}.pdf"
-    render_comprehension_pdf(req, str(pdf_path))
-    return RenderResponse(job_id=job_id, download_url=f"/download/{job_id}")
-
-
 @app.get("/download/{job_id}")
 def download(job_id: str):
     pdf_path = OUTPUT_DIR / f"{job_id}.pdf"
     if not pdf_path.exists():
         raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
-    filename = "OX_워크북.pdf" if job_id.startswith("ox-") else "구문분석_상세분석본.pdf"
-    return FileResponse(pdf_path, media_type="application/pdf", filename=filename)
+    return FileResponse(pdf_path, media_type="application/pdf", filename="구문분석_상세분석본.pdf")
 
 
 @app.get("/health")
