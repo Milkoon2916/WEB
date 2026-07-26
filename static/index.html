@@ -431,6 +431,8 @@
             responseMimeType: 'application/json',
             // 텍스트 설명이 아니라 실제 스키마로 강제 -- vocabulary 같은 필수 필드 누락 방지
             responseJsonSchema: responseJsonSchema,
+            // 생각하는 데 쓰는 토큰을 줄여서 긴 지문에서 실제 답변이 잘리지 않게 함
+            thinkingConfig: { thinkingBudget: 1024 },
           },
         }),
       });
