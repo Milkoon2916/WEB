@@ -339,6 +339,7 @@
 
       <label class="field-label" style="margin-top:16px;">지문 내용</label>
       <textarea id="passage" placeholder="영어 지문을 여기에 붙여넣으세요..."></textarea>
+      <div id="sentenceCounter" style="font-family:monospace;font-size:11px;color:#888;text-align:right;margin-top:4px;">0문장으로 인식됨</div>
     </div>
   </div>
 
@@ -374,6 +375,11 @@
     const modelSelectEl = document.getElementById('modelSelect');
     const passageIndexEl = document.getElementById('passageIndex');
     const passageEl = document.getElementById('passage');
+    const sentenceCounterEl = document.getElementById('sentenceCounter');
+    passageEl.addEventListener('input', () => {
+      const n = passageEl.value.trim() ? splitSentences(passageEl.value).length : 0;
+      sentenceCounterEl.textContent = `${n}문장으로 인식됨`;
+    });
     const btn = document.getElementById('btn');
     const statusEl = document.getElementById('status');
     const downloadEl = document.getElementById('download');
@@ -411,17 +417,38 @@
     // 이렇게 미리 나눈 목록을 [번호]로 프롬프트에 그대로 넘겨서, 모델이 "몇 문장인지 스스로
     // 세는" 일 자체를 하지 않게 만든다 -- 개수가 틀릴 여지를 원천적으로 없앰.
     function splitSentences(text){
-      // 단어 경계(\b)로 매칭해서 "deal.", "total.", "co."처럼 우연히 약어 패턴을 포함하는
-      // 흔한 단어 때문에 문장이 잘못 합쳐지는 걸 방지. 진짜 약어만 정확히 보호.
+      // 1단계: 소제목처럼 마침표 없이 끝나는 짧은 줄(헤딩)은 문장 추출에서 제외
+      const lines = text.split(/\n/);
+      const contentLines = lines.filter(line => {
+        const trimmed = line.trim();
+        if (trimmed.length === 0) return false;
+        const endsLikeSentence = /[.!?"'\)\]]\s*$/.test(trimmed);
+        const looksLikeHeading = !endsLikeSentence && trimmed.length < 60 && trimmed.split(/\s+/).length <= 8;
+        return !looksLikeHeading;
+      });
+      const cleaned = contentLines.join(' ');
+
+      // 2단계: 약어/소수점 보호 (단어 경계 기준)
       const abbrevs = ['Mr','Mrs','Ms','Dr','Prof','St','vs','e\\.g','i\\.e','etc','U\\.S','U\\.K','a\\.m','p\\.m','Jr','Sr','Inc','Co','Ltd','approx','cf','al'];
-      let t = text.trim();
+      let t = cleaned.trim();
       abbrevs.forEach(a => {
         const re = new RegExp('\\b' + a + '\\.', 'g');
         t = t.replace(re, a.replace(/\\/g, '') + '§');
       });
       t = t.replace(/(\d)\.(\d)/g, '$1§$2');
-      const matches = t.match(/[^.!?]+[.!?]+(?:['")\]]*)?/g) || [t];
-      return matches.map(s => s.replace(/§/g, '.').trim()).filter(s => s.length > 0);
+
+      // 3단계: 문장 경계 뒤 글자가 소문자면(인용문 뒤 문장이 이어지는 경우) 이어붙임
+      const raw = t.match(/[^.!?]+[.!?]+(?:['")\]]*)?\s*/g) || [t];
+      const merged = [];
+      for (const piece of raw) {
+        const trimmedPiece = piece.trim();
+        if (merged.length > 0 && /^[a-z]/.test(trimmedPiece)) {
+          merged[merged.length - 1] += ' ' + trimmedPiece;
+          continue;
+        }
+        merged.push(trimmedPiece);
+      }
+      return merged.map(s => s.replace(/§/g, '.').trim()).filter(s => s.length > 0);
     }
 
     async function callGeminiDirectly(apiKey, systemPrompt, model, maxTokens, passageText, passageIndex, targetGrammar, responseJsonSchema, sentenceList) {
