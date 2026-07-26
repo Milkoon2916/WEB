@@ -217,9 +217,14 @@ function stripCodeFence(text){
 // 이렇게 미리 나눈 목록을 프롬프트에 [번호]로 그대로 넘겨서, 모델이 "몇 문장인지 스스로 세는"
 // 일 자체를 하지 않게 만든다 -- 개수가 틀릴 여지를 원천적으로 없앰.
 function splitSentences(text){
-  const abbrevs = ['Mr.','Mrs.','Ms.','Dr.','Prof.','St.','vs.','e.g.','i.e.','etc.','U.S.','U.K.','a.m.','p.m.','Jr.','Sr.','Inc.','Co.','Ltd.','approx.','cf.','al.'];
+  // 단어 경계(\b)로 매칭해서 "deal.", "total.", "co."(우연히 "al."/"co." 패턴을 포함하는 흔한 단어) 같은
+  // 오탐으로 문장이 잘못 합쳐지는 걸 방지. 진짜 약어(Dr., Mr., Inc. 등)만 정확히 보호.
+  const abbrevs = ['Mr','Mrs','Ms','Dr','Prof','St','vs','e\\.g','i\\.e','etc','U\\.S','U\\.K','a\\.m','p\\.m','Jr','Sr','Inc','Co','Ltd','approx','cf','al'];
   let t = text.trim();
-  abbrevs.forEach(a => { t = t.split(a).join(a.replace('.', '§')); });
+  abbrevs.forEach(a => {
+    const re = new RegExp('\\b' + a + '\\.', 'g');
+    t = t.replace(re, a.replace(/\\/g, '') + '§');
+  });
   t = t.replace(/(\d)\.(\d)/g, '$1§$2'); // 소수점 보호 (예: 3.14)
   const matches = t.match(/[^.!?]+[.!?]+(?:['")\]]*)?/g) || [t];
   return matches.map(s => s.replace(/§/g, '.').trim()).filter(s => s.length > 0);
