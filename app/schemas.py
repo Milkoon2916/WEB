@@ -87,3 +87,22 @@ class PassageAnalysis(BaseModel):
 # Claude에게 요구할 최종 JSON의 최상위 형태 (여러 지문을 한 번에 받을 수도 있게)
 class AnalysisResponse(BaseModel):
     passages: list[PassageAnalysis] = Field(min_length=1)
+
+
+# ---- OX 리딩 워크북 (comprehension) PDF 렌더링용 스키마 ----
+# 브라우저가 Gemini로 문제를 만든 "이후"의 결과 JSON + 화면에서 입력한 부가 정보를 그대로 받아서
+# WeasyPrint로 PDF를 찍어낸다. 여기도 LLM을 호출하지 않으므로 API 키가 필요 없다.
+class ComprehensionItem(BaseModel):
+    num: str
+    text: str
+    answer: Literal["O", "X"]
+
+
+class ComprehensionRequest(BaseModel):
+    titleKo: str
+    titleEn: str
+    groupA: list[ComprehensionItem] = Field(min_length=1)
+    groupB: list[ComprehensionItem] = Field(min_length=1)
+    passage: str
+    source: Optional[str] = None
+    watermark: Optional[str] = None  # data:image/... base64 URL, 선택
