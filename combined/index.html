@@ -213,12 +213,28 @@ function stripCodeFence(text){
   return t;
 }
 
+// 지문을 실제로 문장 단위 배열로 쪼갬 (흔한 약어의 마침표는 문장 끝으로 취급하지 않음).
+// 이렇게 미리 나눈 목록을 프롬프트에 [번호]로 그대로 넘겨서, 모델이 "몇 문장인지 스스로 세는"
+// 일 자체를 하지 않게 만든다 -- 개수가 틀릴 여지를 원천적으로 없앰.
+function splitSentences(text){
+  const abbrevs = ['Mr.','Mrs.','Ms.','Dr.','Prof.','St.','vs.','e.g.','i.e.','etc.','U.S.','U.K.','a.m.','p.m.','Jr.','Sr.','Inc.','Co.','Ltd.','approx.','cf.','al.'];
+  let t = text.trim();
+  abbrevs.forEach(a => { t = t.split(a).join(a.replace('.', '§')); });
+  t = t.replace(/(\d)\.(\d)/g, '$1§$2'); // 소수점 보호 (예: 3.14)
+  const matches = t.match(/[^.!?]+[.!?]+(?:['")\]]*)?/g) || [t];
+  return matches.map(s => s.replace(/§/g, '.').trim()).filter(s => s.length > 0);
+}
+
 // ---- 구문분석 (지문 1개당 1번 호출, 결과를 모아서 PDF 1개로 합침) ----
-async function callGeminiForAnalysis(apiKey, systemPrompt, model, maxTokens, passageText, passageIndex, source, targetGrammar, responseJsonSchema){
+async function callGeminiForAnalysis(apiKey, systemPrompt, model, maxTokens, passageText, passageIndex, source, targetGrammar, responseJsonSchema, sentenceList){
   const lines = [`다음 지문을 분석해줘 (지문 번호: ${passageIndex}):`];
   if (source && source.trim()) lines.push(`지문 출처: ${source.trim()}`);
   if (targetGrammar && targetGrammar.trim()) lines.push(`목표 어법: ${targetGrammar.trim()}`);
   lines.push('');
+  lines.push(`이 지문은 정확히 ${sentenceList.length}개의 문장으로 미리 나뉘어 있습니다. 아래 [번호]를 그대로 sentences 배열의 순서·개수·num 값으로 쓰세요. 절대 합치거나 쪼개지 마세요:`);
+  sentenceList.forEach((s, i) => lines.push(`[${i + 1}] ${s}`));
+  lines.push('');
+  lines.push('원문 전체 (참고용, 번역·문맥 파악에 활용):');
   lines.push(passageText.trim());
   const userMessage = lines.join('\n');
 
@@ -232,7 +248,7 @@ async function callGeminiForAnalysis(apiKey, systemPrompt, model, maxTokens, pas
         maxOutputTokens: maxTokens,
         responseMimeType: 'application/json',
         responseJsonSchema,
-        thinkingConfig: { thinkingBudget: 1024 }
+        thinkingConfig: { thinkingBudget: 2048 }
       }
     })
   });
@@ -248,6 +264,22 @@ async function callGeminiForAnalysis(apiKey, systemPrompt, model, maxTokens, pas
   return parsed.passages ? parsed.passages[0] : parsed;
 }
 
+async function analyzeOnePassageWithRetry(apiKey, systemPrompt, model, maxTokens, passageText, passageIndex, source, targetGrammar, responseJsonSchema, onStatus){
+  const sentenceList = splitSentences(passageText);
+  const expected = sentenceList.length;
+  let result = await callGeminiForAnalysis(apiKey, systemPrompt, model, maxTokens, passageText, passageIndex, source, targetGrammar, responseJsonSchema, sentenceList);
+  let actual = result.sentences ? result.sentences.length : 0;
+
+  if (actual !== expected) {
+    onStatus(`지문 ${passageIndex}: 문장 수가 안 맞아요 (실제 ${expected}문장 / 분석 ${actual}문장) — 다시 시도하는 중...`);
+    result = await callGeminiForAnalysis(apiKey, systemPrompt, model, maxTokens, passageText, passageIndex, source, targetGrammar, responseJsonSchema, sentenceList);
+    actual = result.sentences ? result.sentences.length : 0;
+  }
+
+  result._sentenceCheck = { expected, actual, ok: actual === expected };
+  return result;
+}
+
 async function runPassageAnalysisBatch(apiKey, model, passages){
   const pdfStatus = document.getElementById('pdfStatus');
   const pdfCard = document.getElementById('pdfCard');
@@ -257,10 +289,18 @@ async function runPassageAnalysisBatch(apiKey, model, passages){
   const cfg = await cfgRes.json();
 
   const analyzed = [];
+  const warnings = [];
   for (let i = 0; i < passages.length; i++) {
     const p = passages[i];
     pdfStatus.textContent = `지문 ${i + 1}/${passages.length} 분석 중… (20~90초씩 걸릴 수 있어요)`;
-    const result = await callGeminiForAnalysis(apiKey, cfg.system_prompt, model, cfg.max_tokens, p.text, i + 1, p.source, p.grammar, cfg.response_json_schema);
+    const result = await analyzeOnePassageWithRetry(
+      apiKey, cfg.system_prompt, model, cfg.max_tokens, p.text, i + 1, p.source, p.grammar, cfg.response_json_schema,
+      (msg) => { pdfStatus.textContent = msg; }
+    );
+    if (!result._sentenceCheck.ok) {
+      warnings.push(`지문 ${i + 1}(${p.source || '출처 없음'}): 재시도 후에도 문장 수가 안 맞아요 (지문 ${result._sentenceCheck.expected}문장 / 분석 ${result._sentenceCheck.actual}문장). PDF에서 직접 확인해주세요.`);
+    }
+    delete result._sentenceCheck;
     result.passage_index = i + 1;
     if (p.source && p.source.trim()) result.source = p.source.trim();
     analyzed.push(result);
@@ -283,6 +323,12 @@ async function runPassageAnalysisBatch(apiKey, model, passages){
   link.target = '_blank';
   link.textContent = `📄 PDF 다운로드 (지문 ${passages.length}개 합본)`;
   pdfCard.appendChild(link);
+  if (warnings.length > 0) {
+    const warnEl = document.createElement('p');
+    warnEl.style.cssText = 'margin-top:10px;font-size:12px;color:var(--pink-dark);white-space:pre-line;';
+    warnEl.textContent = '⚠ ' + warnings.join('\n⚠ ');
+    pdfCard.appendChild(warnEl);
+  }
 }
 
 // ---- OX 워크북 (지문마다 개별 생성, 원본 comprehension 도구의 워크시트 스타일 + 인쇄/PDF 기능 이식) ----
