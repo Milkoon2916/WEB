@@ -188,12 +188,12 @@ function addPassageBlock(){
 function updateCounter(textarea, counter){
   const text = textarea.value;
   const chars = text.length;
-  const estSentences = Math.max(1, Math.round(chars / 110));
+  const actualSentences = text.trim() ? splitSentences(text).length : 0;
   let level = 'safe', label = '안전';
   if (chars > 12000) { level = 'danger'; label = '너무 길어요 — 지문을 나눠서 넣는 걸 권장'; }
   else if (chars > 6000) { level = 'warn'; label = '다소 김 — 결과가 잘리면 지문을 나눠보세요'; }
   counter.className = 'char-counter' + (level === 'safe' ? '' : ' ' + level);
-  counter.textContent = `${chars.toLocaleString()}자 · 약 ${estSentences}문장 · ${label}`;
+  counter.textContent = `${chars.toLocaleString()}자 · ${actualSentences}문장으로 인식됨 · ${label}`;
 }
 
 function renumberBlocks(){
@@ -217,17 +217,39 @@ function stripCodeFence(text){
 // 이렇게 미리 나눈 목록을 프롬프트에 [번호]로 그대로 넘겨서, 모델이 "몇 문장인지 스스로 세는"
 // 일 자체를 하지 않게 만든다 -- 개수가 틀릴 여지를 원천적으로 없앰.
 function splitSentences(text){
-  // 단어 경계(\b)로 매칭해서 "deal.", "total.", "co."(우연히 "al."/"co." 패턴을 포함하는 흔한 단어) 같은
-  // 오탐으로 문장이 잘못 합쳐지는 걸 방지. 진짜 약어(Dr., Mr., Inc. 등)만 정확히 보호.
+  // 1단계: 소제목처럼 마침표 없이 끝나는 짧은 줄(헤딩)은 문장 추출에서 제외 -- 다음 문장에 들러붙는 걸 방지
+  const lines = text.split(/\n/);
+  const contentLines = lines.filter(line => {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) return false;
+    const endsLikeSentence = /[.!?"'\)\]]\s*$/.test(trimmed);
+    const looksLikeHeading = !endsLikeSentence && trimmed.length < 60 && trimmed.split(/\s+/).length <= 8;
+    return !looksLikeHeading;
+  });
+  const cleaned = contentLines.join(' ');
+
+  // 2단계: 약어/소수점 보호 (단어 경계 기준 -- "deal.", "total." 같은 오탐 방지)
   const abbrevs = ['Mr','Mrs','Ms','Dr','Prof','St','vs','e\\.g','i\\.e','etc','U\\.S','U\\.K','a\\.m','p\\.m','Jr','Sr','Inc','Co','Ltd','approx','cf','al'];
-  let t = text.trim();
+  let t = cleaned.trim();
   abbrevs.forEach(a => {
     const re = new RegExp('\\b' + a + '\\.', 'g');
     t = t.replace(re, a.replace(/\\/g, '') + '§');
   });
-  t = t.replace(/(\d)\.(\d)/g, '$1§$2'); // 소수점 보호 (예: 3.14)
-  const matches = t.match(/[^.!?]+[.!?]+(?:['")\]]*)?/g) || [t];
-  return matches.map(s => s.replace(/§/g, '.').trim()).filter(s => s.length > 0);
+  t = t.replace(/(\d)\.(\d)/g, '$1§$2');
+
+  // 3단계: 문장 경계 후보 뒤 글자가 소문자면(인용문 뒤 문장이 이어지는 경우) 진짜 끝이
+  // 아니라고 보고 앞 조각에 이어붙임 -- 예: "Don't argue!" message. 를 한 문장으로 유지
+  const raw = t.match(/[^.!?]+[.!?]+(?:['")\]]*)?\s*/g) || [t];
+  const merged = [];
+  for (const piece of raw) {
+    const trimmedPiece = piece.trim();
+    if (merged.length > 0 && /^[a-z]/.test(trimmedPiece)) {
+      merged[merged.length - 1] += ' ' + trimmedPiece;
+      continue;
+    }
+    merged.push(trimmedPiece);
+  }
+  return merged.map(s => s.replace(/§/g, '.').trim()).filter(s => s.length > 0);
 }
 
 // ---- 구문분석 (지문 1개당 1번 호출, 결과를 모아서 PDF 1개로 합침) ----
