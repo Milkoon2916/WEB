@@ -34,6 +34,10 @@
   .passage-block .block-title{font-family:"Courier New",monospace;font-size:12px;font-weight:bold;color:var(--pink-dark);margin-bottom:4px;}
   .remove-btn{position:absolute;top:14px;right:14px;background:none;border:none;color:#a68a9c;font-size:13px;cursor:pointer;font-family:"Courier New",monospace;}
 
+  .char-counter{font-family:"Courier New",monospace;font-size:11px;color:#a68a9c;text-align:right;margin-top:4px;}
+  .char-counter.warn{color:#c47a00;}
+  .char-counter.danger{color:var(--pink-dark);font-weight:bold;}
+
   #addPassage{
     margin-top:14px;width:100%;padding:10px;border:1.5px dashed var(--rule);border-radius:6px;
     background:none;color:var(--pink-dark);font-family:"Courier New",monospace;font-size:13px;cursor:pointer;
@@ -54,12 +58,39 @@
   .result-card h3{margin:0 0 8px;font-size:16px;}
   .result-card p{font-size:13px;color:#6b5a66;margin:0 0 14px;}
   .result-card a.dl{display:inline-block;font-family:"Courier New",monospace;font-size:13px;color:var(--pink-dark);font-weight:bold;}
-  .ox-block{border-top:1px solid var(--rule);padding-top:12px;margin-top:12px;}
-  .ox-block-title{font-weight:bold;font-size:13px;margin-bottom:6px;}
-  .ox-item{font-size:13px;line-height:1.6;margin-bottom:4px;}
-  .ox-item b{color:var(--pink-dark);margin-right:6px;}  .char-counter{font-family:"Courier New",monospace;font-size:11px;color:#a68a9c;text-align:right;margin-top:4px;}
-  .char-counter.warn{color:#c47a00;}
-  .char-counter.danger{color:var(--pink-dark);font-weight:bold;}
+
+  /* ---- OX 워크북 시트 스타일 (원본 comprehension 도구 이식) ---- */
+  .ox-body{border-top:1px solid var(--rule);padding-top:14px;margin-top:10px;}
+  .ox-stamp{display:inline-block;border:2px solid var(--pink);color:var(--pink-dark);font-family:"Courier New",monospace;font-size:11px;letter-spacing:.1em;padding:3px 10px;border-radius:20px;transform:rotate(-3deg);margin-bottom:12px;}
+  .ox-title-kr{font-size:19px;margin:0 0 2px;font-weight:700;}
+  .ox-title-en{font-size:13px;color:#6b5a66;margin:0 0 14px;font-style:italic;}
+  .ox-instr{font-size:13px;font-weight:bold;margin:18px 0 8px;}
+  .ox-passage-box{background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:14px 16px;font-size:13.5px;line-height:1.7;}
+  .ox-row{display:flex;gap:10px;padding:8px 0;border-bottom:1px dashed var(--rule);font-size:13.5px;line-height:1.55;}
+  .ox-row:last-child{border-bottom:none;}
+  .ox-row.en{font-style:italic;}
+  .ox-num{color:var(--pink-dark);font-weight:bold;font-family:"Courier New",monospace;flex:0 0 24px;}
+  .ox-pick{flex:0 0 auto;display:flex;gap:6px;align-self:flex-start;margin-left:auto;padding-left:10px;}
+  .ox-pick button{width:24px;height:24px;border-radius:50%;border:1px solid var(--rule);background:#fff;cursor:pointer;font-size:11px;font-family:"Courier New",monospace;}
+  .ox-pick button.picked-o{background:#ffe3f1;border-color:var(--pink);color:var(--pink-dark);}
+  .ox-pick button.picked-x{background:#ffe3f1;border-color:var(--pink-dark);color:var(--pink-dark);}
+  .ox-toolbar{display:flex;justify-content:space-between;align-items:center;margin-top:18px;}
+  .ox-toolbar button{background:none;border:1px solid var(--rule);border-radius:6px;padding:8px 14px;font-family:"Courier New",monospace;font-size:12px;cursor:pointer;color:var(--ink);}
+  .ox-toolbar button:hover{border-color:var(--pink);color:var(--pink-dark);}
+  .ox-key{display:none;margin-top:14px;padding:14px 16px;background:var(--paper);border:1px dashed var(--rule);border-radius:6px;}
+  .ox-key.show{display:block;}
+  .ox-key h4{font-size:15px;font-weight:700;margin:0 0 4px;}
+  .ox-key .key-sub{font-size:11px;color:#a68a9c;margin:0 0 12px;font-family:"Courier New",monospace;}
+  .ox-key-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px 6px;font-family:"Courier New",monospace;font-size:12px;}
+  .ox-key-grid b{color:var(--pink-dark);margin-right:4px;}
+
+  @media print{
+    body.print-isolate .wrap > *:not(.results){display:none;}
+    body.print-isolate .results > *:not(.print-target){display:none;}
+    .ox-toolbar{display:none;}
+    .ox-key{display:block !important;page-break-before:always;break-before:page;border:none;background:#fff;}
+    body{background:#fff;}
+  }
 </style>
 </head>
 <body>
@@ -67,7 +98,9 @@
   <p class="eyebrow">ARAXDNA · batch</p>
   <h1>지문 여러 개로 구문분석 + OX 워크북</h1>
   <p class="lead">지문을 최대 5개까지 한 번에 넣으면, 구문분석은 <b>PDF 한 개</b>로 합쳐서,
-    OX 워크북은 지문별로 만들어드립니다. Google Gemini API 키 하나만 있으면 됩니다
+    OX 워크북은 지문별로 만들어드립니다. 각 워크북 카드에서 "인쇄 / PDF 저장" 버튼을 누르면
+    그 워크북만 인쇄 대화상자를 통해 PDF로 저장할 수 있어요.
+    Google Gemini API 키 하나만 있으면 됩니다
     (<a href="https://aistudio.google.com/apikey" target="_blank" style="color:var(--pink-dark)">무료 발급</a>).
     키는 이 브라우저에만 저장되고 서버로는 전송되지 않습니다.</p>
 
@@ -152,8 +185,6 @@ function addPassageBlock(){
   renumberBlocks();
 }
 
-// 서버 응답 예산(약 59,000토큰)을 문장당 대략 350토큰으로 나눠 안전 구간을 추정.
-// 영어 기준 1문장 ≈ 20단어 ≈ 110자로 잡아 대략적인 안내만 제공 (정확한 토큰 수 아님).
 function updateCounter(textarea, counter){
   const text = textarea.value;
   const chars = text.length;
@@ -201,7 +232,7 @@ async function callGeminiForAnalysis(apiKey, systemPrompt, model, maxTokens, pas
         maxOutputTokens: maxTokens,
         responseMimeType: 'application/json',
         responseJsonSchema,
-        thinkingConfig: { thinkingBudget: 1024 } // 생각하는 데 쓰는 토큰을 줄여서 실제 답변에 예산을 더 남김
+        thinkingConfig: { thinkingBudget: 1024 }
       }
     })
   });
@@ -214,7 +245,6 @@ async function callGeminiForAnalysis(apiKey, systemPrompt, model, maxTokens, pas
   if (!candidate) throw new Error('Gemini가 응답을 반환하지 않았습니다. (안전 필터 등으로 차단되었을 수 있어요)');
   const rawText = candidate.content.parts.filter(p => p.text).map(p => p.text).join('');
   const parsed = JSON.parse(stripCodeFence(rawText));
-  // 스키마는 {passages:[...]} 형태 (여러 지문용). 여기서는 지문 1개씩 넣으므로 첫 항목만 사용.
   return parsed.passages ? parsed.passages[0] : parsed;
 }
 
@@ -255,7 +285,7 @@ async function runPassageAnalysisBatch(apiKey, model, passages){
   pdfCard.appendChild(link);
 }
 
-// ---- OX 워크북 (지문마다 개별 생성) ----
+// ---- OX 워크북 (지문마다 개별 생성, 원본 comprehension 도구의 워크시트 스타일 + 인쇄/PDF 기능 이식) ----
 function buildOxSystemPrompt(numKo, numEn){
   const total = numKo + numEn;
   const lastKo = String(numKo).padStart(2,'0');
@@ -303,6 +333,73 @@ async function runOxForOnePassage(apiKey, model, passageText, numKo, numEn){
   return JSON.parse(text);
 }
 
+function itemRow(it, isEn){
+  return `<div class="ox-row${isEn ? ' en' : ''}">
+    <span class="ox-num">${it.num}</span>
+    <span>${escapeHtml(it.text)}</span>
+    <span class="ox-pick">
+      <button type="button" class="pick-btn" data-choice="o">O</button>
+      <button type="button" class="pick-btn" data-choice="x">X</button>
+    </span>
+  </div>`;
+}
+
+function buildOxSheetHtml(parsed, passageText, source){
+  const koRange = `01~${parsed.groupA[parsed.groupA.length - 1].num}`;
+  const enRange = `${parsed.groupB[0].num}~${parsed.groupB[parsed.groupB.length - 1].num}`;
+  const items = [...parsed.groupA, ...parsed.groupB];
+
+  let html = '<div class="ox-body">';
+  if (source) html += `<span class="ox-stamp">${escapeHtml(source)}</span>`;
+  html += `<div class="ox-title-kr">${escapeHtml(parsed.titleKo)}</div>`;
+  html += `<div class="ox-title-en">${escapeHtml(parsed.titleEn)}</div>`;
+  html += `<div class="ox-instr">다음 글을 읽고 물음에 답하시오.</div>`;
+  html += `<div class="ox-passage-box">${escapeHtml(passageText)}</div>`;
+  html += `<div class="ox-instr">${koRange}&nbsp;&nbsp;글의 내용과 일치하면 O, 일치하지 않으면 X를 고르시오.</div>`;
+  parsed.groupA.forEach(it => { html += itemRow(it, false); });
+  html += `<div class="ox-instr">${enRange}&nbsp;&nbsp;Choose O if the statement matches the passage, or X if it does not.</div>`;
+  parsed.groupB.forEach(it => { html += itemRow(it, true); });
+  html += `<div class="ox-toolbar">
+    <button type="button" class="key-toggle-btn">정답 보기 / 숨기기</button>
+    <button type="button" class="print-btn">인쇄 / PDF 저장</button>
+  </div>`;
+  html += `<div class="ox-key">
+    <h4>정답 (Answer Key)</h4>
+    <p class="key-sub">${source ? escapeHtml(source) + ' · ' : ''}${escapeHtml(parsed.titleKo)}</p>
+    <div class="ox-key-grid">${items.map(it => `<span><b>${it.num}</b>${it.answer}</span>`).join('')}</div>
+  </div>`;
+  html += '</div>';
+  return html;
+}
+
+function wireOxCard(card){
+  card.querySelectorAll('.pick-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const wrap = btn.parentElement;
+      [...wrap.children].forEach(b => b.classList.remove('picked-o', 'picked-x'));
+      btn.classList.add(btn.dataset.choice === 'o' ? 'picked-o' : 'picked-x');
+    });
+  });
+  const keyToggle = card.querySelector('.key-toggle-btn');
+  if (keyToggle) keyToggle.addEventListener('click', () => {
+    card.querySelector('.ox-key').classList.toggle('show');
+  });
+  const printBtn = card.querySelector('.print-btn');
+  if (printBtn) printBtn.addEventListener('click', () => printOnlyThisCard(card));
+}
+
+function printOnlyThisCard(card){
+  card.classList.add('print-target');
+  document.body.classList.add('print-isolate');
+  const cleanup = () => {
+    card.classList.remove('print-target');
+    document.body.classList.remove('print-isolate');
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  window.print();
+}
+
 async function runOxBatch(apiKey, model, passages, numKo, numEn){
   const oxContainer = document.getElementById('oxContainer');
   oxContainer.innerHTML = '';
@@ -316,16 +413,9 @@ async function runOxBatch(apiKey, model, passages, numKo, numEn){
 
     try {
       const parsed = await runOxForOnePassage(apiKey, model, p.text, numKo, numEn);
-      const statusP = card.querySelector('.ox-status');
-      statusP.remove();
-      const block = document.createElement('div');
-      block.className = 'ox-block';
-      let html = `<div class="ox-block-title">${escapeHtml(parsed.titleKo)}</div>`;
-      [...parsed.groupA, ...parsed.groupB].forEach(it => {
-        html += `<div class="ox-item"><b>${it.num}</b>${escapeHtml(it.text)} (${it.answer})</div>`;
-      });
-      block.innerHTML = html;
-      card.appendChild(block);
+      card.querySelector('.ox-status').remove();
+      card.insertAdjacentHTML('beforeend', buildOxSheetHtml(parsed, p.text, p.source && p.source.trim() ? p.source.trim() : ''));
+      wireOxCard(card);
     } catch (e) {
       card.querySelector('.ox-status').textContent = '오류: ' + e.message;
     }
