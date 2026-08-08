@@ -1,3 +1,4 @@
+import sys
 import tempfile
 import uuid
 from pathlib import Path
@@ -8,24 +9,32 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .prompt import build_system_prompt, MODEL
-from .schemas import AnalysisResponse
-from .render import render_pdf
+from .schemas import AnalysisResponse, ComprehensionRequest
+from .render import render_pdf, render_comprehension_pdf
 from .thesaurus import enrich_vocabulary
 
 app = FastAPI(title="영어 학습자료 제작소")
 
 ROOT_DIR = Path(__file__).parent.parent
-STATIC_DIR = ROOT_DIR / "static"                 # 구문분석기 프론트엔드 (단독)
-COMPREHENSION_DIR = ROOT_DIR / "comprehension"    # OX 워크북 메이커 (단독, 정적)
-COMBINED_DIR = ROOT_DIR / "combined"              # 지문 1번으로 구문분석+OX 동시 생성
+ALL_IN_ONE_DIR = ROOT_DIR / "all-in-one"           # 지문 1번으로 4개 도구(구문분석+OX+워크북+VOCA) 동시 생성
 LANDING_DIR = ROOT_DIR / "landing"                # 허브 랜딩 페이지
 
-if STATIC_DIR.exists():
-    app.mount("/passage-analyzer", StaticFiles(directory=str(STATIC_DIR), html=True), name="passage-analyzer")
-if COMPREHENSION_DIR.exists():
-    app.mount("/comprehension", StaticFiles(directory=str(COMPREHENSION_DIR), html=True), name="comprehension")
-if COMBINED_DIR.exists():
-    app.mount("/combined", StaticFiles(directory=str(COMBINED_DIR), html=True), name="combined")
+if ALL_IN_ONE_DIR.exists():
+    app.mount("/all-in-one", StaticFiles(directory=str(ALL_IN_ONE_DIR), html=True), name="all-in-one")
+
+# ---------------------------------------------------------------------------
+# WB(워크북)와 VOCA를 각각 독립된 FastAPI 앱 그대로 서브 마운트한다.
+# 각 서비스는 원래 레포 그대로의 코드이며(프론트엔드의 절대경로만 상대경로로
+# 수정), Starlette의 Mount가 내부 라우팅을 알아서 처리하므로 서버 쪽 코드는
+# 손댈 필요가 없다.
+# ---------------------------------------------------------------------------
+sys.path.insert(0, str(ROOT_DIR))
+
+from workbook_service.main import app as workbook_app   # noqa: E402
+from voca_service.app.main import app as voca_app       # noqa: E402
+
+app.mount("/workbook", workbook_app, name="workbook")
+app.mount("/voca", voca_app, name="voca")
 
 OUTPUT_DIR = Path(tempfile.gettempdir()) / "passage-analyzer-outputs"
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -81,6 +90,25 @@ def download(job_id: str):
     if not pdf_path.exists():
         raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
     return FileResponse(pdf_path, media_type="application/pdf", filename="구문분석_상세분석본.pdf")
+
+
+@app.post("/render-comprehension", response_model=RenderResponse)
+def render_comprehension(req: ComprehensionRequest):
+    """OX 리딩 워크북(comprehension) 결과를 WeasyPrint로 PDF 렌더링한다.
+    브라우저가 Gemini로 이미 문항을 만든 뒤, 그 결과 JSON만 여기로 보낸다.
+    LLM을 호출하지 않으므로 API 키가 필요 없다."""
+    job_id = str(uuid.uuid4())
+    pdf_path = OUTPUT_DIR / f"comprehension-{job_id}.pdf"
+    render_comprehension_pdf(req, str(pdf_path))
+    return RenderResponse(job_id=job_id, download_url=f"/download-comprehension/{job_id}")
+
+
+@app.get("/download-comprehension/{job_id}")
+def download_comprehension(job_id: str):
+    pdf_path = OUTPUT_DIR / f"comprehension-{job_id}.pdf"
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+    return FileResponse(pdf_path, media_type="application/pdf", filename="OX_독해워크북.pdf")
 
 
 @app.get("/health")
