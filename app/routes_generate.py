@@ -22,7 +22,7 @@ from .prompts import (
     OX_MODEL,
     OX_SYSTEM_PROMPT,
     WORKBOOK_MODEL,
-    build_workbook_system_prompt,
+    WORKBOOK_SYSTEM_PROMPT,
     build_analysis_prompt,
     build_analysis_user_message,
     build_grammar_quiz_user_message,
@@ -53,10 +53,10 @@ async def _get_teacher_gemini(teacher_id: int, db):
 
 def _unwrap_analysis_result(result: dict) -> dict:
     """analysis_schema.AnalysisResponse는 {"passages": [PassageAnalysis, ...]} 형태로
-    Gemini에게 강제되는데, PDF 템플릿(analysis_pdf.html)과 프론트엔드(passage-analyzer.html)는
-    둘 다 summary/sentences/vocabulary가 최상위에 바로 있는 '단일 지문' 형태를 기대한다.
-    이 불일치 때문에 지문분석 PDF가 항상 빈칸으로 나오고 핵심 어휘(단어 추출)도 전혀 채워지지
-    않았음 -> 여기서 항상 첫 번째 지문을 최상위로 꺼내 평탄화해서 저장/렌더링에 쓴다."""
+    Gemini에게 강제되는데, PDF 템플릿(analysis_pdf.html)과 프론트엔드는 둘 다
+    summary/sentences/vocabulary가 최상위에 바로 있는 '단일 지문' 형태를 기대한다.
+    이 불일치 때문에 지문분석 PDF가 항상 빈칸으로 나오고 핵심 어휘(단어 추출)도 전혀
+    채워지지 않았음 -> 여기서 항상 첫 번째 지문을 최상위로 꺼내 평탄화해서 저장/렌더링에 쓴다."""
     if isinstance(result, dict) and isinstance(result.get("passages"), list) and result["passages"]:
         return result["passages"][0]
     return result
@@ -90,10 +90,12 @@ async def generate_workbook(
     passage = db.create_passage(teacher_id, body.passage_text, body.title)
 
     user_message = build_workbook_user_message(body.passage_text)
-    steps_for_prompt = body.workbook_steps or ALL_WORKBOOK_STEPS
-    system_prompt = build_workbook_system_prompt(steps_for_prompt)
-    result = await call_gemini_json(api_key, model or WORKBOOK_MODEL, system_prompt, user_message)
-    result["_selected_steps"] = steps_for_prompt
+    # final_check 단계(빈칸/선택/순서/영작 20~40개)가 추가되면서 응답이 커져서
+    # 기본 16000 토큰으로는 종종 잘림 -> 워크북만 26000으로 올림.
+    result = await call_gemini_json(
+        api_key, model or WORKBOOK_MODEL, WORKBOOK_SYSTEM_PROMPT, user_message, max_output_tokens=26000,
+    )
+    result["_selected_steps"] = body.workbook_steps or ALL_WORKBOOK_STEPS
 
     material = db.create_material(passage.id, "workbook", json.dumps(result, ensure_ascii=False))
     return {"passage_id": passage.id, "material_id": material.id, "result": result}
@@ -125,7 +127,9 @@ async def generate_grammar_quiz(
     passage = db.create_passage(teacher_id, body.passage_text, body.title)
 
     user_message = build_grammar_quiz_user_message(body.passage_text, body.target_grammar)
-    result = await call_gemini_json(api_key, model or GRAMMAR_QUIZ_MODEL, GRAMMAR_QUIZ_SYSTEM_PROMPT, user_message)
+    result = await call_gemini_json(
+        api_key, model or GRAMMAR_QUIZ_MODEL, GRAMMAR_QUIZ_SYSTEM_PROMPT, user_message, max_output_tokens=20000,
+    )
 
     material = db.create_material(passage.id, "grammar_quiz", json.dumps(result, ensure_ascii=False))
     return {"passage_id": passage.id, "material_id": material.id, "result": result}
@@ -147,8 +151,6 @@ async def generate_all(
     api_key, model = await _get_teacher_gemini(teacher_id, db)
     passage = db.create_passage(teacher_id, body.passage_text, body.title)
 
-    workbook_steps = body.workbook_steps or ALL_WORKBOOK_STEPS
-
     calls = {}
     if "analysis" in selected:
         calls["analysis"] = call_gemini_json(
@@ -157,8 +159,9 @@ async def generate_all(
         )
     if "workbook" in selected:
         calls["workbook"] = call_gemini_json(
-            api_key, model or WORKBOOK_MODEL, build_workbook_system_prompt(workbook_steps),
+            api_key, model or WORKBOOK_MODEL, WORKBOOK_SYSTEM_PROMPT,
             build_workbook_user_message(body.passage_text),
+            max_output_tokens=26000,
         )
     if "ox" in selected:
         calls["ox"] = call_gemini_json(
@@ -169,6 +172,7 @@ async def generate_all(
         calls["grammar_quiz"] = call_gemini_json(
             api_key, model or GRAMMAR_QUIZ_MODEL, GRAMMAR_QUIZ_SYSTEM_PROMPT,
             build_grammar_quiz_user_message(body.passage_text, body.target_grammar),
+            max_output_tokens=20000,
         )
 
     keys = list(calls.keys())
@@ -176,6 +180,7 @@ async def generate_all(
 
     materials = {}
     errors = {}
+    workbook_steps = body.workbook_steps or ALL_WORKBOOK_STEPS
     for key, res in zip(keys, results):
         if isinstance(res, Exception):
             detail = res.detail if isinstance(res, HTTPException) else str(res)
@@ -217,8 +222,6 @@ def download_material_pdf(material_id: int, teacher_id: int = Depends(get_curren
     title = (passage.title if passage else None) or "학습자료"
 
     if material.type == "analysis":
-        # 이 수정 이전에 저장된 자료는 아직 {"passages": [...]} 형태로 남아있을 수 있어서
-        # 다운로드 시점에도 한 번 더 방어적으로 평탄화한다.
         pdf_bytes = render_analysis_pdf(_unwrap_analysis_result(content), title=title)
     elif material.type == "workbook":
         steps = content.pop("_selected_steps", None)
