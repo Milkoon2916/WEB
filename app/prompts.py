@@ -4,7 +4,8 @@
 - ANALYSIS_SYSTEM_PROMPT: 기존 워크북 사이트(WEB) app/prompt.py에서 그대로 이식.
 - WORKBOOK_SYSTEM_PROMPT: 이전 대화에서 정리된 4단계 스펙(해석/빈칸/순서/언스크램블)을
   기준으로 새로 작성. 실제 서비스 반영 전에 한 번 검수 필요.
-- OX_SYSTEM_PROMPT: 랜딩 페이지 설명("한글 O/X 10문항 + 영어 O/X 5문항")을 기준으로 작성.
+- OX_SYSTEM_PROMPT: 랜딩 페이지 설명("한글 O/X + 영어 O/X, 선생님이 문항 수 지정 가능(각 최대 20개)")을
+  기준으로 작성.
   기존 comprehension 프론트엔드에 있던 원본 프롬프트가 더 정교했을 수 있으니,
   실제 결과물이 기존 버전과 다르게 느껴지면 원본 JS 파일의 프롬프트로 교체 권장.
 """
@@ -41,7 +42,8 @@ ANALYSIS_SYSTEM_PROMPT_TEMPLATE = """당신은 한국 수능/CSAT 영어 독해 
 theme / flow(도입→전개→결론) / background(4-7문장).
 
 ## 6. 어휘표 (vocabulary)
-핵심 어휘 8~12개. word/meaning/synonym/antonym. 고등학교 필수 수준으로만 제시.
+핵심 어휘 최소 30개 이상 (지문이 짧으면 파생어·관련 표현까지 포함해서라도 30개를 채울 것).
+word/meaning/synonym/antonym. 고등학교 필수 수준으로만 제시.
 
 ## 출력 형식
 아래 형태의 순수 JSON만 출력하세요 (마크다운 코드펜스 금지, 예시의 필드명/구조를 정확히 따를 것):
@@ -227,22 +229,38 @@ def build_workbook_user_message(passage_text: str) -> str:
 
 
 # ---------- OX 리딩 워크북 ----------
-OX_SYSTEM_PROMPT = """당신은 한국 고등학교 영어 내용일치 문제를 만드는 전문 튜터입니다.
-주어진 영어 지문으로 한글 O/X 10문항과 영어 O/X 5문항을 JSON으로만 생성하세요.
+# 한글/영어 문항 수를 선생님이 각각 고를 수 있게 함 (기본 10/5, 최대 20/20).
+OX_DEFAULT_KOREAN_COUNT = 10
+OX_DEFAULT_ENGLISH_COUNT = 5
+OX_MAX_COUNT = 20
 
-## 한글 O/X 10문항 (korean_ox)
-지문 내용을 한글로 서술한 문장 10개. 지문과 일치하면 answer=true, 틀리면 false.
+
+def build_ox_system_prompt(korean_count: int, english_count: int) -> str:
+    korean_count = max(1, min(korean_count, OX_MAX_COUNT))
+    english_count = max(1, min(english_count, OX_MAX_COUNT))
+    return f"""당신은 한국 고등학교 영어 내용일치 문제를 만드는 전문 튜터입니다.
+주어진 영어 지문으로 한글 O/X {korean_count}문항과 영어 O/X {english_count}문항을 JSON으로만 생성하세요.
+설명이나 마크다운 코드펜스 없이 JSON 객체만 출력합니다.
+
+## 한글 O/X {korean_count}문항 (korean_ox)
+지문 내용을 한글로 서술한 문장 정확히 {korean_count}개. num은 1부터 {korean_count}까지.
+지문과 일치하면 answer=true, 틀리면 false. 절반 정도는 true, 절반 정도는 false가 되게 섞을 것.
 틀린 문장은 지문의 특정 부분을 살짝 바꿔서 만들되, 너무 뻔하게 티나지 않게 할 것.
 
-## 영어 O/X 5문항 (english_ox)
-지문 내용을 영어로 서술한 문장 5개. 위와 동일한 방식으로 정답 판정.
+## 영어 O/X {english_count}문항 (english_ox)
+지문 내용을 영어로 서술한 문장 정확히 {english_count}개. num은 1부터 {english_count}까지.
+위와 동일한 방식으로 정답 판정.
 
 ## 출력 형식 (JSON)
-{
-  "korean_ox": [{"num": 1, "statement": "...", "answer": true}],
-  "english_ox": [{"num": 1, "statement": "...", "answer": false}]
-}
+{{
+  "korean_ox": [{{"num": 1, "statement": "...", "answer": true}}],
+  "english_ox": [{{"num": 1, "statement": "...", "answer": false}}]
+}}
 """
+
+
+# 하위 호환용 (기본 개수로 생성하고 싶을 때)
+OX_SYSTEM_PROMPT = build_ox_system_prompt(OX_DEFAULT_KOREAN_COUNT, OX_DEFAULT_ENGLISH_COUNT)
 
 
 def build_ox_user_message(passage_text: str) -> str:
@@ -252,11 +270,13 @@ def build_ox_user_message(passage_text: str) -> str:
 # ---------- 목표 어법 문제 (문법 테스트, 레퍼런스 형식) ----------
 GRAMMAR_QUIZ_MODEL = "gemini-3.5-flash"
 
+GRAMMAR_QUIZ_QUESTION_COUNT = 25
+
 GRAMMAR_QUIZ_SYSTEM_PROMPT = """당신은 한국 중·고등학교 영어 문법 테스트지를 만드는 전문 튜터입니다.
-주어진 지문과 목표 어법을 바탕으로 문법 테스트 10문항을 JSON으로만 생성하세요.
+주어진 지문과 목표 어법을 바탕으로 문법 테스트 __COUNT__문항을 JSON으로만 생성하세요.
 설명이나 마크다운 코드펜스 없이 JSON 객체만 출력합니다.
 
-## 문제 유형 (아래 5가지를 섞어서 10문항 출제)
+## 문제 유형 (아래 5가지를 골고루 섞어서 __COUNT__문항 출제, 유형별 5문항씩 균형있게)
 
 1. "choice_parens" — 문장 속 괄호 두 군데(또는 한 군데) 안에 선택지가 있고, 그 조합을 고르는 문제.
    sentence 안에 "(A / B)" 형태로 괄호를 그대로 포함시키고, choices는 조합별 문자열
@@ -277,11 +297,13 @@ GRAMMAR_QUIZ_SYSTEM_PROMPT = """당신은 한국 중·고등학교 영어 문법
 
 ## 태그 (tag)
 문항마다 그 문제가 다루는 문법 포인트를 2~6자로 짧게 표시 (예: "명사와 관사", "조동사", "to부정사",
-"문장의 형식과 의문문", "시제", "동명사", "접속사와 간접의문문", "수동태", "대명사"). 목표 어법이
-지정되면 그 문법을 최소 3문항 이상 다루고, 나머지는 지문 속 다른 어법 포인트로 다양하게 구성.
+"문장의 형식과 의문문", "시제", "동명사", "접속사와 간접의문문", "수동태", "대명사", "관계대명사",
+"분사구문", "가정법", "비교구문", "부정사", "전치사"). 목표 어법이 지정되면 그 문법을 최소 6문항
+이상 다루고, 나머지는 지문 속 다른 어법 포인트로 다양하게 구성해서 겹치는 문장/포인트가 최대한
+없게 할 것 (지문이 짧아 문장이 부족하면 같은 문장에서 다른 어법 포인트를 뽑아 써도 됨).
 
 ## 절대 규칙
-- 정확히 10문항. num은 1~10.
+- 정확히 __COUNT__문항. num은 1~__COUNT__.
 - choice_parens/fill_blank_choice/choose_sentence는 반드시 정답이 명확히 하나로 판별되게.
 - order_words/rewrite는 채점 기준이 되는 answer를 반드시 자연스러운 완전한 문장으로 제공.
 - instruction은 한국어로, 실제 문제지에 나오는 지시문 톤으로 작성
@@ -328,11 +350,11 @@ GRAMMAR_QUIZ_SYSTEM_PROMPT = """당신은 한국 중·고등학교 영어 문법
     }
   ]
 }
-"""
+""".replace("__COUNT__", str(GRAMMAR_QUIZ_QUESTION_COUNT))
 
 
 def build_grammar_quiz_user_message(passage_text: str, target_grammar: str | None = None) -> str:
-    lines = ["다음 지문으로 문법 테스트 10문항을 만들어줘:"]
+    lines = [f"다음 지문으로 문법 테스트 {GRAMMAR_QUIZ_QUESTION_COUNT}문항을 만들어줘:"]
     if target_grammar and target_grammar.strip():
         lines.append(f"목표 어법: {target_grammar.strip()}")
     lines.append("")
