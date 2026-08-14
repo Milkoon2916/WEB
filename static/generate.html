@@ -95,6 +95,22 @@
         </div>
         <div class="steps-grid" id="workbookStepsGrid"></div>
       </div>
+
+      <div id="oxCountPicker" style="margin-top:14px; padding-top:14px; border-top:1px dashed var(--border);">
+        <div class="picker-title"><span>O/X 문항 수 선택 (최대 20개씩)</span></div>
+        <div style="display:flex; gap:16px; flex-wrap:wrap; margin-top:8px;">
+          <label style="display:flex; align-items:center; gap:6px; font-size:13.5px;">
+            한글 O/X
+            <input type="number" id="oxKoreanCount" value="10" min="1" max="20" style="width:64px; padding:6px 8px; border:1px solid var(--border-strong); border-radius:6px;">
+            개
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:13.5px;">
+            영어 O/X
+            <input type="number" id="oxEnglishCount" value="5" min="1" max="20" style="width:64px; padding:6px 8px; border:1px solid var(--border-strong); border-radius:6px;">
+            개
+          </label>
+        </div>
+      </div>
     </div>
 
     <div class="row">
@@ -152,9 +168,21 @@ document.getElementById('stepsNoneBtn').onclick = () => document.querySelectorAl
 function syncWorkbookStepsVisibility(){
   const workbookChecked = document.querySelector('.material-cb[value=workbook]').checked;
   document.getElementById('workbookStepsPicker').style.display = workbookChecked ? 'block' : 'none';
+  const oxChecked = document.querySelector('.material-cb[value=ox]').checked;
+  document.getElementById('oxCountPicker').style.display = oxChecked ? 'block' : 'none';
 }
 materialsGrid.addEventListener('change', syncWorkbookStepsVisibility);
 syncWorkbookStepsVisibility();
+
+function clampOxCount(el){
+  let v = parseInt(el.value, 10);
+  if(isNaN(v)) v = 1;
+  v = Math.max(1, Math.min(20, v));
+  el.value = v;
+  return v;
+}
+document.getElementById('oxKoreanCount').addEventListener('change', e => clampOxCount(e.target));
+document.getElementById('oxEnglishCount').addEventListener('change', e => clampOxCount(e.target));
 
 async function checkAuth(){
   const res = await fetch('/auth/me', {credentials:'include'});
@@ -171,6 +199,8 @@ document.getElementById('genBtn').onclick = async () => {
   const title = document.getElementById('titleInput').value.trim() || null;
   const materials = Array.from(document.querySelectorAll('.material-cb:checked')).map(c => c.value);
   const workbook_steps = Array.from(document.querySelectorAll('.wstep-cb:checked')).map(c => c.value);
+  const ox_korean_count = clampOxCount(document.getElementById('oxKoreanCount'));
+  const ox_english_count = clampOxCount(document.getElementById('oxEnglishCount'));
   const errorMsg = document.getElementById('errorMsg');
   const loading = document.getElementById('loadingMsg');
   const statusRow = document.getElementById('statusRow');
@@ -187,7 +217,7 @@ document.getElementById('genBtn').onclick = async () => {
   try{
     const res = await fetch('/api/generate-all', {
       method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include',
-      body: JSON.stringify({passage_text, target_grammar, title, materials, workbook_steps})
+      body: JSON.stringify({passage_text, target_grammar, title, materials, workbook_steps, ox_korean_count, ox_english_count})
     });
     if(!res.ok){ throw new Error((await res.json()).detail || '생성에 실패했어요.'); }
     const data = await res.json();
