@@ -6,6 +6,7 @@ Gemini API 호출 담당.
 """
 import asyncio
 import json
+import random
 import re
 
 import httpx
@@ -15,9 +16,11 @@ GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{mode
 
 # 503(모델 과부하)/429(요청 한도)는 순간적인 상태일 때가 많아서, 바로 에러를 던지지 않고
 # 짧게 재시도한다. 지문분석에서 503이 자주 보고됐던 것도 대부분 이 케이스였음.
+# generate-all처럼 여러 자료를 동시에 요청할 때는 각 호출의 재시도 타이밍이 겹치면
+# 다시 한꺼번에 부딪힐 수 있어서, 대기 시간에 약간의 무작위 지터를 더해 서로 어긋나게 함.
 _RETRY_STATUS_CODES = {429, 503}
 _MAX_ATTEMPTS = 3
-_BACKOFF_SECONDS = [1.5, 3.5]  # 1차 실패 후 1.5초, 2차 실패 후 3.5초 대기
+_BACKOFF_SECONDS = [1.5, 3.5]  # 1차 실패 후 1.5초, 2차 실패 후 3.5초 대기 (+ 지터)
 
 # "유효한 JSON을 반환하지 않음" 에러(주로 목표어법 문제처럼 문제 유형이 5가지로 섞여있는
 # 복잡한 스키마에서 발생) — 아래 두 가지가 실제 원인이었음:
@@ -96,7 +99,7 @@ async def call_gemini_json(
             raise HTTPException(status_code=502, detail=f"Gemini에 연결하지 못했어요: {e}")
 
         if resp.status_code in _RETRY_STATUS_CODES and attempt < _MAX_ATTEMPTS - 1:
-            await asyncio.sleep(_BACKOFF_SECONDS[attempt])
+            await asyncio.sleep(_BACKOFF_SECONDS[attempt] + random.uniform(0, 1.0))
             continue
         if resp.status_code == 429:
             raise HTTPException(
@@ -128,7 +131,7 @@ async def call_gemini_json(
 
         # 파싱 실패: 토큰 한도 때문에 잘렸으면 한도를 올려서, 아니면 그대로 재시도
         if finish_reason == "MAX_TOKENS":
-            current_max_tokens = min(current_max_tokens * 2, 32000)
+            current_max_tokens = min(current_max_tokens * 2, 48000)
             last_error_detail = "Gemini 응답이 토큰 한도로 잘려서 JSON이 완성되지 않았어요."
         else:
             last_error_detail = "Gemini가 유효한 JSON을 반환하지 않았어요."

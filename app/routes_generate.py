@@ -193,8 +193,20 @@ async def generate_all(
             max_output_tokens=32000,
         )
 
+    # 4개를 완전히 동시에(같은 순간) 쏘면 무료 등급 Gemini 키 기준으로 순간 동시 요청 수
+    # 제한에 걸려서 진짜 503(과부하)이 나는 경우가 있었음.
+    # -> 시작 시점을 0.8초씩 살짝 떨어뜨려서(스태거) 순간적으로 몰리는 걸 줄임.
+    # (여전히 순차 실행보다는 훨씬 빠름 - 완전 동시 실행 대비 최대 2.4초만 늦게 시작)
+    async def _staggered(coro, delay: float):
+        if delay:
+            await asyncio.sleep(delay)
+        return await coro
+
     keys = list(calls.keys())
-    results = await asyncio.gather(*calls.values(), return_exceptions=True)
+    staggered_calls = [
+        _staggered(coro, i * 0.8) for i, coro in enumerate(calls.values())
+    ]
+    results = await asyncio.gather(*staggered_calls, return_exceptions=True)
 
     materials = {}
     errors = {}
