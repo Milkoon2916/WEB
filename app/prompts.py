@@ -26,11 +26,22 @@ ANALYSIS_SYSTEM_PROMPT_TEMPLATE = """당신은 한국 수능/CSAT 영어 독해 
 - vocabulary 목록과 본문 tag 표시는 절대 서로 어긋나면 안 됩니다 (아래 6번 규칙 참고).
 
 ## 1. 문장 토큰화 (tokens)
-"tag": 설명이 필요한 단어/구. tag_class="g"(문법)/"v"(어휘)/"gv"(문법+어휘).
-"conn": 논리 연결어. "hl": 문장의 핵심구(문장당 0-1개).
+tokens[].type은 "text"(일반 텍스트)/"tag"(설명 필요한 단어·구)/"conn"(연결어) 중 하나만 쓰세요.
+"tag": tag_class="g"(문법)/"v"(어휘)/"gv"(문법+어휘)/"par"(다른 태그가 전혀 없는 순수 병렬 요소).
+
+## 1-1. 병렬관계 (parallel structure)
+and/or/but 등으로 연결된 병렬 구조(형용사+형용사, 동사+동사, 절+절 등)를 찾으면, 그 병렬 요소들에
+parallel_group(정수, 한 문장에 병렬 세트가 여러 개면 1,2,3...으로 구분)과
+parallel_index(정수, 그 세트 안에서의 순서 1,2,3...)를 채우세요.
+- 이미 tag_class가 "g"/"v"/"gv"인 단어가 동시에 병렬 요소이면: tag_class는 그대로 두고
+  parallel_group/parallel_index만 추가로 채우세요 (색은 기존 문법/어휘 색이 우선입니다).
+- 다른 태그가 전혀 없는 순수 병렬 요소만 tag_class="par"로 표시하세요.
+- 병렬이 아닌 단어는 parallel_group/parallel_index를 채우지 마세요(null).
 
 ## 2. 문장 배지 (badge)
 "topic" / "insert" / "target" / null. 문장당 최대 1개.
+topic(주제문)과 target(목표 어법) 배지가 붙은 문장은 PDF에서 문장 전체가 자동으로
+형광펜(노란 배경) 처리됩니다. 정말 주제문/목표 어법 문장에만 정확히 붙이고 남발하지 마세요.
 
 ## 3. 한글 번역 (translation)
 직역이 아닌 자연스러운 번역. '-습니다/-다'체로 통일.
@@ -68,7 +79,8 @@ word/meaning/synonym/antonym. 고등학교 필수 수준으로만 제시.
             {{"type": "text", "text": "While "}},
             {{"type": "tag", "text": "scrolling through", "tag_class": "g", "caption": "분사구문"}},
             {{"type": "conn", "text": "However"}},
-            {{"type": "hl", "text": "핵심 구절"}}
+            {{"type": "tag", "text": "safe", "tag_class": "par", "caption": null, "parallel_group": 1, "parallel_index": 1}},
+            {{"type": "tag", "text": "caring", "tag_class": "v", "caption": "보살피는", "parallel_group": 1, "parallel_index": 2}}
           ],
           "translation": "자연스러운 한글 번역",
           "notes": [
@@ -84,8 +96,9 @@ word/meaning/synonym/antonym. 고등학교 필수 수준으로만 제시.
   ]
 }}
 
-tokens[].type은 "text"(일반 텍스트)/"tag"(설명 필요한 단어·구)/"conn"(연결어)/"hl"(핵심구) 중 하나.
-type="tag"일 때만 tag_class("g"/"v"/"gv")와 caption(2-6자 한글)을 채우세요.
+tokens[].type은 "text"(일반 텍스트)/"tag"(설명 필요한 단어·구)/"conn"(연결어) 중 하나. ("hl"은 더 이상 사용하지 마세요.)
+type="tag"일 때만 tag_class("g"/"v"/"gv"/"par")와 caption(2-6자 한글, tag_class="par"면 비워도 됨)을 채우세요.
+병렬 요소면 parallel_group/parallel_index도 채우세요 (병렬이 아니면 둘 다 null).
 notes[].category는 "comprehension"/"grammar"/"blank"/"writing"/"implication"/"theme" 중 해당하는 것만.
 """
 

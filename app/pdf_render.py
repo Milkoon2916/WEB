@@ -16,6 +16,21 @@ FONTS_DIR = BASE_DIR / "assets" / "fonts"
 
 env = Environment(loader=FileSystemLoader(str(TEMPLATES_DIR)), autoescape=True)
 
+# 병렬관계(parallel structure) 캡션에 쓰는 원문자 숫자 (①②③...). 템플릿에서
+# {{ t.parallel_index | circle }} 로 사용 -> "병렬1-①" 같은 캡션을 자동 조립한다.
+_CIRCLE_DIGITS = {1: "①", 2: "②", 3: "③", 4: "④", 5: "⑤", 6: "⑥", 7: "⑦", 8: "⑧", 9: "⑨"}
+
+
+def _circle_num(n) -> str:
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        return str(n)
+    return _CIRCLE_DIGITS.get(n, str(n))
+
+
+env.filters["circle"] = _circle_num
+
 FONT_REGULAR = (FONTS_DIR / "NanumGothic.ttf").as_uri()
 FONT_BOLD = (FONTS_DIR / "NanumGothicBold.ttf").as_uri()
 

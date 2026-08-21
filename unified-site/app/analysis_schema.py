@@ -14,15 +14,20 @@ class Token(BaseModel):
     """문장을 이루는 조각 하나. 일반 텍스트이거나, 색상 태그가 붙은 단어/구."""
     type: Literal["text", "tag", "conn", "hl"]
     text: str  # 원문 그대로의 영어 단어/구 (또는 일반 텍스트 조각)
-    tag_class: Optional[Literal["g", "v", "gv"]] = None  # type == "tag"일 때만
+    tag_class: Optional[Literal["g", "v", "gv", "par"]] = None  # type == "tag"일 때만
     caption: Optional[str] = None  # type == "tag"일 때만, 2-6자 한글 캡션
+    # 병렬관계(parallel structure) 표시용. 병렬 요소가 아니면 둘 다 null.
+    # parallel_group: 한 문장 안에 병렬 세트가 여러 개일 때 구분하는 번호 (1, 2, 3...)
+    # parallel_index: 그 세트 안에서 이 단어/구의 순서 (1, 2, 3...) -> 템플릿에서 ①②③으로 렌더링됨
+    parallel_group: Optional[int] = None
+    parallel_index: Optional[int] = None
 
     @field_validator("tag_class", mode="before")
     @classmethod
     def _fallback_unknown_tag_class(cls, v):
         # Gemini가 가끔 type 값("hl", "conn" 등)을 tag_class에 잘못 넣는 경우가 있어,
         # 전체 렌더링이 깨지지 않도록 알 수 없는 값은 "g"로 안전하게 대체한다.
-        if v is not None and v not in {"g", "v", "gv"}:
+        if v is not None and v not in {"g", "v", "gv", "par"}:
             return "g"
         return v
 

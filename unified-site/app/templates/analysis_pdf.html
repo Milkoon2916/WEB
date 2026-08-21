@@ -41,6 +41,7 @@
   .legend .sw { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:3px; vertical-align:middle; }
   .legend .sw.underline-sw { background:transparent; border-bottom:2px solid #999; height:0; }
   .legend .sw.hl-sw { background:#fff2a8; border:1px solid #ccc; }
+  .legend .sw.par-sw { background:#0f9b8e; }
 
   /* two column layout via table -- reliable across HTML->PDF engines */
   table.layout { width:100%; border-collapse:collapse; table-layout:fixed; }
@@ -59,12 +60,15 @@
   /* interlinear tagged word: word on one line, small caption below */
   .tag { display:inline-block; text-align:center; vertical-align:top; margin:0 1px; }
   .tag .w { display:block; white-space:nowrap; }
-  .tag .c { display:block; font-size:6.6pt; color:#8a8a8a; white-space:nowrap; line-height:1.2; margin-top:0px; }
+  .tag .c { display:block; font-size:7.8pt; color:#111; font-weight:600; white-space:nowrap; line-height:1.25; margin-top:0.5px; }
   .g { color:#d3222a; font-weight:600; } /* grammar - red */
   .v { color:#2266cc; font-weight:600; } /* vocab - blue */
   .gv { color:#8b3fa0; font-weight:600; } /* grammar+vocab - purple */
+  .par { color:#0f9b8e; font-weight:600; } /* 순수 병렬 - teal */
+  .par-mark { border-bottom: 1.4px dotted #0f9b8e; } /* 다른 태그(g/v/gv)와 병렬이 겹칠 때: 기존 색 유지 + 점선 밑줄만 추가 */
   .conn { text-decoration: underline; text-decoration-color:#999; color:#444; } /* connector */
-  .hl { background:#fff2a8; } /* highlight */
+  mark.hl { background:#fff2a8; padding:0 1px; border-radius:1px; } /* 주제문/목표 어법 문장 전체에 칠하는 형광펜 */
+  .hl { background:#fff2a8; } /* 예전에 저장된 지문분석의 단어 단위 형광펜(하위호환용) */
 
   .note-box { border:1px solid #e3e3e3; border-radius:4px; margin-bottom:3mm; overflow:hidden; page-break-inside: avoid; }
   .note-label { font-size:7.6pt; font-weight:700; color:#fff; padding:1.5px 6px; display:inline-block; border-bottom-right-radius:6px; }
@@ -104,7 +108,8 @@
       <span><i class="sw" style="background:#2266cc"></i>어휘</span>
       <span><i class="sw" style="background:#8b3fa0"></i>문법+어휘</span>
       <span><i class="sw underline-sw"></i>연결어</span>
-      <span><i class="sw hl-sw"></i>형광펜</span>
+      <span><i class="sw par-sw"></i>병렬관계</span>
+      <span><i class="sw hl-sw"></i>형광펜(주제문·목표 어법)</span>
     </div>
   </div>
 
@@ -119,13 +124,21 @@
         {% if s.badge == "insert" %}<span class="badge badge-insert">문장삽입</span>{% endif %}
         {% if s.badge == "target" %}<span class="badge badge-target">목표 어법</span>{% endif %}
         <span class="sent-num">{{ s.num }}</span>
+        {%- set hl_sentence = s.badge in ("topic", "target") -%}
+        {%- if hl_sentence %}<mark class="hl">{% endif -%}
         {%- for t in s.tokens %}
-          {%- if t.type == "tag" %} <span class="tag"><span class="w {{ t.tag_class or 'g' }}">{{ t.text }}</span><span class="c">{{ t.caption }}</span></span>
+          {%- if t.type == "tag" %}
+            {%- set par_suffix = ("병렬" ~ t.parallel_group ~ "-" ~ (t.parallel_index | circle)) if t.parallel_group else "" -%}
+            {%- set caption = (t.caption ~ " · " ~ par_suffix) if (t.caption and par_suffix) else (par_suffix if par_suffix else t.caption) -%}
+            {%- set base_class = "par" if t.tag_class == "par" else (t.tag_class or "g") -%}
+            {%- set css_class = (base_class ~ " par-mark") if (t.parallel_group and t.tag_class in ("g", "v", "gv")) else base_class -%}
+            <span class="tag"><span class="w {{ css_class }}">{{ t.text }}</span><span class="c">{{ caption }}</span></span>
           {%- elif t.type == "conn" %} <span class="conn">{{ t.text }}</span>
           {%- elif t.type == "hl" %} <span class="hl">{{ t.text }}</span>
           {%- else %} {{ t.text }}
           {%- endif %}
         {%- endfor %}
+        {%- if hl_sentence %}</mark>{% endif -%}
       </div>
       <div class="sent-kr">{{ s.translation }}</div>
     </div>
