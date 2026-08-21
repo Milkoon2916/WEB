@@ -4,6 +4,7 @@
 """
 import asyncio
 import json
+import re
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -66,6 +67,73 @@ def _unwrap_analysis_result(result: dict) -> dict:
     return result
 
 
+def _tag_words_in_sentence(sentence: dict) -> set[str]:
+    """이 문장의 tokens 안에서 이미 type="tag"로 표시된 단어들(소문자)을 모아서 반환."""
+    covered: set[str] = set()
+    for tok in sentence.get("tokens", []):
+        if tok.get("type") == "tag":
+            for w in re.findall(r"[A-Za-z']+", tok.get("text", "")):
+                covered.add(w.lower())
+    return covered
+
+
+def _short_caption(meaning: str | None) -> str:
+    """어휘표의 meaning(예: '조직하다, 계획하다')에서 캡션용으로 짧게 자름."""
+    if not meaning:
+        return "어휘"
+    first = re.split(r"[,/]", meaning.strip())[0].strip()
+    return first[:6] if first else "어휘"
+
+
+def _sync_vocabulary_tags(result: dict) -> dict:
+    """Gemini가 '어휘표-본문 연동 규칙'을 안 지켰을 때를 대비한 서버 측 보정.
+    vocabulary 목록의 단어(단일 단어만 대상, 구는 매칭이 애매해서 건너뜀)가 본문
+    어디에도 tag로 표시되지 않았으면, 그 단어가 처음 등장하는 text 토큰을 찾아
+    강제로 tag_class="v" 태그로 쪼개서 끼워넣는다. 이미 tag로 표시된 단어는 건드리지 않고,
+    한 단어당 한 번만(가장 먼저 나오는 자리) 적용한다."""
+    vocabulary = result.get("vocabulary") or []
+    sentences = result.get("sentences") or []
+    if not vocabulary or not sentences:
+        return result
+
+    for vocab_item in vocabulary:
+        word = (vocab_item.get("word") or "").strip()
+        if not word or " " in word:  # 'set out' 같은 구는 건너뜀 (자동 매칭이 애매함)
+            continue
+
+        already_tagged = any(word.lower() in _tag_words_in_sentence(s) for s in sentences)
+        if already_tagged:
+            continue
+
+        pattern = re.compile(r"\b" + re.escape(word) + r"(e?s|e?d|ing)?\b", re.IGNORECASE)
+        for sentence in sentences:
+            tokens = sentence.get("tokens", [])
+            new_tokens = []
+            found = False
+            for tok in tokens:
+                if not found and tok.get("type") == "text":
+                    text = tok.get("text", "")
+                    m = pattern.search(text)
+                    if m:
+                        before, matched, after = text[:m.start()], text[m.start():m.end()], text[m.end():]
+                        if before:
+                            new_tokens.append({"type": "text", "text": before})
+                        new_tokens.append({
+                            "type": "tag", "text": matched, "tag_class": "v",
+                            "caption": _short_caption(vocab_item.get("meaning")),
+                        })
+                        if after:
+                            new_tokens.append({"type": "text", "text": after})
+                        found = True
+                        continue
+                new_tokens.append(tok)
+            if found:
+                sentence["tokens"] = new_tokens
+                break  # 이 단어는 처리 끝, 다음 vocabulary 단어로
+
+    return result
+
+
 @router.post("/passage-analysis")
 async def generate_analysis(
     body: GenerateRequest,
@@ -82,6 +150,7 @@ async def generate_analysis(
         api_key, model or ANALYSIS_MODEL, system_prompt, user_message, max_output_tokens=24000,
     )
     result = _unwrap_analysis_result(result)
+    result = _sync_vocabulary_tags(result)
     if result.get("title_en"):
         db.update_passage_title(passage.id, result["title_en"])
 
@@ -220,6 +289,7 @@ async def generate_all(
             continue
         if key == "analysis":
             res = _unwrap_analysis_result(res)
+            res = _sync_vocabulary_tags(res)
             if res.get("title_en"):
                 db.update_passage_title(passage.id, res["title_en"])
         if key == "workbook":
