@@ -211,6 +211,15 @@ class RealDB:
         self.session.refresh(row)
         return row
 
+    def update_passage_title(self, passage_id: int, title: str) -> None:
+        """지문 생성 시 제목을 안 넣은 경우, 지문분석 결과로 뽑아낸 영문 제목(title_en)을
+        지문의 제목으로 채워넣기 위해 씀. PDF/워드 다운로드 파일명이 '학습자료'가 아니라
+        실제 지문 제목으로 나오게 하기 위한 용도."""
+        row = self.session.get(PassageModel, passage_id)
+        if row and not row.title and title:
+            row.title = title
+            self.session.commit()
+
     def get_passage(self, passage_id: int, teacher_id: int) -> PassageModel | None:
         row = self.session.get(PassageModel, passage_id)
         if row and row.teacher_id == teacher_id:

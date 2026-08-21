@@ -75,6 +75,8 @@ async def generate_analysis(
     user_message = build_analysis_user_message(body.passage_text, body.target_grammar)
     result = await call_gemini_json(api_key, model or ANALYSIS_MODEL, system_prompt, user_message)
     result = _unwrap_analysis_result(result)
+    if result.get("title_en"):
+        db.update_passage_title(passage.id, result["title_en"])
 
     material = db.create_material(passage.id, "analysis", json.dumps(result, ensure_ascii=False))
     return {"passage_id": passage.id, "material_id": material.id, "result": result}
@@ -188,6 +190,8 @@ async def generate_all(
             continue
         if key == "analysis":
             res = _unwrap_analysis_result(res)
+            if res.get("title_en"):
+                db.update_passage_title(passage.id, res["title_en"])
         if key == "workbook":
             res["_selected_steps"] = workbook_steps
         material = db.create_material(passage.id, key, json.dumps(res, ensure_ascii=False))

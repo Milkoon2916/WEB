@@ -82,6 +82,8 @@ async def generate_analysis(
         api_key, model or ANALYSIS_MODEL, system_prompt, user_message, max_output_tokens=24000,
     )
     result = _unwrap_analysis_result(result)
+    if result.get("title_en"):
+        db.update_passage_title(passage.id, result["title_en"])
 
     material = db.create_material(passage.id, "analysis", json.dumps(result, ensure_ascii=False))
     return {"passage_id": passage.id, "material_id": material.id, "result": result}
@@ -218,6 +220,8 @@ async def generate_all(
             continue
         if key == "analysis":
             res = _unwrap_analysis_result(res)
+            if res.get("title_en"):
+                db.update_passage_title(passage.id, res["title_en"])
         if key == "workbook":
             res["_selected_steps"] = workbook_steps
         material = db.create_material(passage.id, key, json.dumps(res, ensure_ascii=False))
