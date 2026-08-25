@@ -44,8 +44,8 @@ class GenerateRequest(BaseModel):
     target_grammar: str | None = None  # 지문분석/목표어법 전용, 나머지는 무시됨
     materials: list[str] | None = None  # generate-all에서 어떤 자료를 만들지 선택 (기본: 전체)
     workbook_steps: list[str] | None = None  # 워크북에서 어떤 단계를 만들지 선택 (기본: 전체)
-    ox_korean_count: int | None = None  # OX 한글 문항 수 (기본 10, 최대 20)
-    ox_english_count: int | None = None  # OX 영어 문항 수 (기본 5, 최대 20)
+    ox_korean_count: int = OX_DEFAULT_KOREAN_COUNT  # OX 한글 문항 수
+    ox_english_count: int = OX_DEFAULT_ENGLISH_COUNT  # OX 영어 문항 수
 
 
 async def _get_teacher_gemini(teacher_id: int, db):
@@ -145,10 +145,7 @@ async def generate_analysis(
 
     system_prompt = build_analysis_prompt()
     user_message = build_analysis_user_message(body.passage_text, body.target_grammar)
-    # 핵심 어휘를 최소 30개 뽑게 되면서 응답이 커져서 기본 16000 토큰으로는 빠듯함 -> 올림.
-    result = await call_gemini_json(
-        api_key, model or ANALYSIS_MODEL, system_prompt, user_message, max_output_tokens=24000,
-    )
+    result = await call_gemini_json(api_key, model or ANALYSIS_MODEL, system_prompt, user_message)
     result = _unwrap_analysis_result(result)
     result = _sync_vocabulary_tags(result)
     if result.get("title_en"):
@@ -189,16 +186,11 @@ async def generate_ox(
     passage = db.create_passage(teacher_id, body.passage_text, body.title)
 
     user_message = build_ox_user_message(body.passage_text)
-    korean_count = body.ox_korean_count or OX_DEFAULT_KOREAN_COUNT
-    english_count = body.ox_english_count or OX_DEFAULT_ENGLISH_COUNT
-    system_prompt = build_ox_system_prompt(korean_count, english_count)
-    result = await call_gemini_json(
-        api_key, model or OX_MODEL, system_prompt, user_message,
-        max_output_tokens=max(16000, (korean_count + english_count) * 400),
-    )
+    system_prompt = build_ox_system_prompt(body.ox_korean_count, body.ox_english_count)
+    result = await call_gemini_json(api_key, model or OX_MODEL, system_prompt, user_message)
 
     material = db.create_material(passage.id, "ox", json.dumps(result, ensure_ascii=False))
-    return {"passage_id": passage.id, "material_id": material.id, "result": result}
+    return {"passage_id": passage.id, "material_id": material.id, "result": result, "passage_text": body.passage_text}
 
 
 @router.post("/grammar-quiz")
@@ -211,9 +203,8 @@ async def generate_grammar_quiz(
     passage = db.create_passage(teacher_id, body.passage_text, body.title)
 
     user_message = build_grammar_quiz_user_message(body.passage_text, body.target_grammar)
-    # 10 -> 25문항으로 늘어난 만큼 토큰 한도도 넉넉히 올림.
     result = await call_gemini_json(
-        api_key, model or GRAMMAR_QUIZ_MODEL, GRAMMAR_QUIZ_SYSTEM_PROMPT, user_message, max_output_tokens=32000,
+        api_key, model or GRAMMAR_QUIZ_MODEL, GRAMMAR_QUIZ_SYSTEM_PROMPT, user_message, max_output_tokens=20000,
     )
 
     material = db.create_material(passage.id, "grammar_quiz", json.dumps(result, ensure_ascii=False))
@@ -241,7 +232,6 @@ async def generate_all(
         calls["analysis"] = call_gemini_json(
             api_key, model or ANALYSIS_MODEL, build_analysis_prompt(),
             build_analysis_user_message(body.passage_text, body.target_grammar),
-            max_output_tokens=24000,
         )
     if "workbook" in selected:
         calls["workbook"] = call_gemini_json(
@@ -250,34 +240,19 @@ async def generate_all(
             max_output_tokens=26000,
         )
     if "ox" in selected:
-        ox_korean_count = body.ox_korean_count or OX_DEFAULT_KOREAN_COUNT
-        ox_english_count = body.ox_english_count or OX_DEFAULT_ENGLISH_COUNT
         calls["ox"] = call_gemini_json(
-            api_key, model or OX_MODEL, build_ox_system_prompt(ox_korean_count, ox_english_count),
+            api_key, model or OX_MODEL, build_ox_system_prompt(body.ox_korean_count, body.ox_english_count),
             build_ox_user_message(body.passage_text),
-            max_output_tokens=max(16000, (ox_korean_count + ox_english_count) * 400),
         )
     if "grammar_quiz" in selected:
         calls["grammar_quiz"] = call_gemini_json(
             api_key, model or GRAMMAR_QUIZ_MODEL, GRAMMAR_QUIZ_SYSTEM_PROMPT,
             build_grammar_quiz_user_message(body.passage_text, body.target_grammar),
-            max_output_tokens=32000,
+            max_output_tokens=20000,
         )
 
-    # 4개를 완전히 동시에(같은 순간) 쏘면 무료 등급 Gemini 키 기준으로 순간 동시 요청 수
-    # 제한에 걸려서 진짜 503(과부하)이 나는 경우가 있었음.
-    # -> 시작 시점을 0.8초씩 살짝 떨어뜨려서(스태거) 순간적으로 몰리는 걸 줄임.
-    # (여전히 순차 실행보다는 훨씬 빠름 - 완전 동시 실행 대비 최대 2.4초만 늦게 시작)
-    async def _staggered(coro, delay: float):
-        if delay:
-            await asyncio.sleep(delay)
-        return await coro
-
     keys = list(calls.keys())
-    staggered_calls = [
-        _staggered(coro, i * 0.8) for i, coro in enumerate(calls.values())
-    ]
-    results = await asyncio.gather(*staggered_calls, return_exceptions=True)
+    results = await asyncio.gather(*calls.values(), return_exceptions=True)
 
     materials = {}
     errors = {}
@@ -331,7 +306,8 @@ def download_material_pdf(material_id: int, teacher_id: int = Depends(get_curren
         steps = content.pop("_selected_steps", None)
         pdf_bytes = render_workbook_pdf(content, title=title, steps=steps)
     elif material.type == "ox":
-        pdf_bytes = render_ox_pdf(content, title=title)
+        passage_text = passage.raw_text if passage else None
+        pdf_bytes = render_ox_pdf(content, title=title, passage_text=passage_text)
     else:
         raise HTTPException(status_code=400, detail="이 자료 유형은 아직 PDF 다운로드를 지원하지 않아요.")
 

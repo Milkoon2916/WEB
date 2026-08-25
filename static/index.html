@@ -72,47 +72,6 @@
   .card p{margin:0; font-size:13.5px; color:var(--text-muted); line-height:1.55;}
   .card .go{margin-top:auto; font-size:12.5px; color:var(--text-faint); font-weight:700;}
 
-  /* ---------- 자료 미리보기 섹션 ---------- */
-  .preview-section{margin-top:36px;}
-  .preview-title{font-size:14px; font-weight:800; color:var(--text-muted); margin:0 0 14px;}
-  .preview-card{
-    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
-    padding:22px; display:flex; flex-direction:column; gap:10px; cursor:default;
-  }
-  .preview-card .tag{
-    align-self:flex-start; font-size:11px; padding:3px 9px; border-radius:20px;
-    background:var(--accent-soft); color:var(--text-muted); font-weight:700;
-  }
-  .preview-card h2{margin:0; font-size:17px; font-weight:800;}
-  .preview-card p{margin:0; font-size:13px; color:var(--text-muted); line-height:1.55;}
-
-  .mock{
-    background:#FBFBFA; border:1px dashed var(--border-strong); border-radius:8px;
-    padding:12px 14px; font-size:12.5px; line-height:2.1; color:var(--text);
-  }
-  .mock b{font-weight:800;}
-  .mock-analysis .mt{margin-right:2px;}
-  .mock-analysis .mtag{display:inline-block; text-align:center; margin:0 3px; font-weight:700;}
-  .mock-analysis .mtag.g{color:#D3222A;}
-  .mock-analysis .mtag i{display:block; font-style:normal; font-size:9px; color:#9A9A94; line-height:1.3;}
-  .mock-analysis .mnote{
-    margin-top:8px; font-size:11px; color:var(--text-muted); background:#fff;
-    border-left:3px solid #3A7BD5; padding:5px 8px; border-radius:4px;
-  }
-  .mock-analysis .mnote b{color:#3A7BD5; font-size:10.5px;}
-
-  .mock-workbook{line-height:2.4;}
-  .mchip{display:inline-block; font-size:10px; font-weight:800; color:#fff; padding:1px 7px; border-radius:8px; margin:0 3px;}
-  .mchip.blank{background:#D3222A;}
-  .mchip.order{background:#2E9E6B;}
-
-  .mock-ox .mox{padding:3px 0;}
-  .mo, .mx{display:inline-block; width:18px; height:18px; text-align:center; line-height:18px; border-radius:50%; font-weight:800; font-size:11px; color:#fff; margin-right:6px;}
-  .mo{background:#2E9E6B;}
-  .mx{background:#8A3B32;}
-
-  .mock-grammar{line-height:1.9;}
-
   footer{margin-top:48px; font-size:12px; color:var(--text-faint); text-align:center;}
 </style>
 </head>
@@ -164,7 +123,8 @@
             <div class="field">
               <label>Gemini 모델</label>
               <select name="gemini_model" id="settingsModel" style="width:100%; padding:9px 10px; border:1px solid var(--border-strong); border-radius:6px; font-family:var(--font-body); font-size:14px; background:var(--bg);">
-                <option value="gemini-3.5-flash">gemini-3.5-flash (기본, 빠르고 저렴)</option>
+                <option value="gemini-3.7-flash">gemini-3.7-flash (기본, 최신·빠르고 저렴)</option>
+                <option value="gemini-3.6-flash">gemini-3.6-flash (이전 버전)</option>
                 <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (더 저렴, 간단한 작업용)</option>
                 <option value="gemini-3.1-pro-preview">gemini-3.1-pro-preview (고성능)</option>
                 <option value="gemini-2.5-flash">gemini-2.5-flash (구버전, 안정적)</option>
@@ -185,67 +145,42 @@
       <a class="card" href="/generate/" style="grid-column: 1 / -1; background:var(--accent); border-color:var(--accent);">
         <span class="tag" style="background:rgba(255,255,255,.15); color:#fff;">추천</span>
         <h2 style="color:#fff;">통합 생성 — 지문 하나로 전부</h2>
-        <p style="color:rgba(255,255,255,.75);">지문분석 · 워크북 · O/X · 목표어법 문제를 한 번에 만들고, 추출된 단어는 체크박스로 골라 바로 단어장에 담아요. 필요 없는 자료는 체크만 해제하면 돼요.</p>
+        <p style="color:rgba(255,255,255,.75);">지문분석 · 워크북 · O/X · 목표어법 문제를 한 번에 만들고, 추출된 단어는 체크박스로 골라 바로 단어장에 담아요.</p>
         <span class="go" style="color:rgba(255,255,255,.6);">시작하기 →</span>
       </a>
-    </div>
 
-    <div class="preview-section">
-      <p class="preview-title">어떤 자료가 만들어지나요? — 실제 출력 미리보기</p>
+      <a class="card" href="/passage-analyzer/">
+        <span class="tag">PDF 출력</span>
+        <h2>지문분석기</h2>
+        <p>영어 지문을 붙여넣으면 문장별 구문분석, 번역, 목표 어법 노트를 자동으로 만들어줘요.</p>
+        <span class="go">분석하러 가기 →</span>
+      </a>
 
-      <div class="grid">
-        <div class="preview-card">
-          <span class="tag">PDF 출력</span>
-          <h2>지문분석</h2>
-          <div class="mock mock-analysis">
-            <span class="mt">While</span>
-            <span class="mtag g">scrolling through<i>분사구문</i></span>
-            <span class="mt">her social media, Gina was</span>
-            <span class="mtag g">astonished<i>수동태</i></span>
-            <span class="mt">when she saw the headline.</span>
-            <div class="mnote"><b>1번 어법 포인트</b> 접속사가 남은 분사구문 + 감정을 느낀 대상이라 과거분사...</div>
-          </div>
-          <p>문장마다 문법(빨강)·어휘(파랑)·문법+어휘(보라)를 색으로 표시하고, 옆에 독해/어법 포인트 노트와 목표 어법, 핵심 어휘표까지 자동으로 정리해줘요.</p>
-        </div>
+      <a class="card" href="/workbook/">
+        <span class="tag">4단계 학습지</span>
+        <h2>워크북 메이커</h2>
+        <p>해석 · 빈칸 채우기 · 문장 순서 · 언스크램블, 4단계 워크북을 한 번에 만들어요.</p>
+        <span class="go">만들러 가기 →</span>
+      </a>
 
-        <div class="preview-card">
-          <span class="tag">4단계+Final Check</span>
-          <h2>워크북</h2>
-          <div class="mock mock-workbook">
-            A lot of people are <b>[work / working]</b><sup>3)</sup> hard.
-            <span class="mchip blank">빈칸</span>______<sup>4)</sup>
-            <span class="mchip order">순서배열</span>(moments, happy, their)<sup>16)</sup>
-          </div>
-          <p>빈칸·해석·어법 고르기·순서 배열 등 원하는 단계만 골라서 만들고, 마지막에 전체를 섞어 점검하는 Final Check까지 한 번에 나와요.</p>
-        </div>
+      <a class="card" href="/comprehension/">
+        <span class="tag">웹 워크북</span>
+        <h2>O/X 리딩 워크북</h2>
+        <p>지문을 넣으면 한글 O/X 10문항, 영어 O/X 5문항짜리 내용일치 문제가 만들어져요.</p>
+        <span class="go">만들러 가기 →</span>
+      </a>
 
-        <div class="preview-card">
-          <span class="tag">웹/PDF</span>
-          <h2>O/X 리딩</h2>
-          <div class="mock mock-ox">
-            <div class="mox"><span class="mo">O</span> Gina immediately shared the news with her friends.</div>
-            <div class="mox"><span class="mx">X</span> The Heundeulbawi actually fell down.</div>
-          </div>
-          <p>지문 내용을 한글·영어 문장으로 바꿔서 O/X 문제로 만들어요. 문항 수는 각각 최대 20개까지 직접 정할 수 있어요.</p>
-        </div>
+      <a class="card" href="/grammar/">
+        <span class="tag">워드 다운로드</span>
+        <h2>어법 문제 만들기</h2>
+        <p>지문을 넣으면 단원 태그가 붙은 문법 테스트가 만들어지고, 편집 가능한 워드로 받을 수 있어요.</p>
+        <span class="go">만들러 가기 →</span>
+      </a>
 
-        <div class="preview-card">
-          <span class="tag">워드 다운로드</span>
-          <h2>목표어법 문제</h2>
-          <div class="mock mock-grammar">
-            <b>1.</b> 괄호 안에서 알맞은 표현을 고르시오.<br>
-            The chef added two <b>(slice / slices)</b> of ham...
-          </div>
-          <p>괄호 선택·빈칸·순서배열·바꿔쓰기·옳은 문장 고르기 등 5가지 유형을 섞어 최대 25문항까지 만들고, 편집 가능한 워드 파일로 받을 수 있어요.</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="grid">
       <a class="card" href="/vocabulary/">
         <span class="tag">학생 링크+코드</span>
         <h2>단어장 퀴즈</h2>
-        <p>단어장을 만들고 학생에게 코드를 나눠주면, 로그인 없이 링크만으로 시험을 봐요. 지문분석에서 뽑은 단어를 체크박스로 바로 담을 수도 있어요.</p>
+        <p>단어장을 만들고 학생에게 코드를 나눠주면, 로그인 없이 링크만으로 시험을 봐요.</p>
         <span class="go">관리하러 가기 →</span>
       </a>
     </div>
