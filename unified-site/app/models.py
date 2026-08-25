@@ -11,12 +11,25 @@ from datetime import datetime
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
 
-# 로컬 개발: 프로젝트 폴더에 app.db 파일 하나로 저장됨
-# Render 배포: DATABASE_URL 환경변수로 영구 디스크 경로(예: sqlite:////app/data/app.db)를 지정해야
-#   재배포할 때마다 데이터가 사라지지 않음 (render.yaml의 disk 설정과 짝을 이룸)
+# 로컬 개발: 프로젝트 폴더에 app.db 파일 하나로 저장됨(sqlite)
+#
+# Render 배포(무료 플랜): 무료 웹서비스는 영구 디스크를 지원하지 않아서, sqlite 파일로는
+#   재배포/reactivate(=컨테이너 재생성)될 때마다 데이터가 통째로 사라짐. 이걸 무료로 피하려면
+#   Neon/Supabase 같은 외부 무료 Postgres를 하나 만들고, 거기서 발급되는 연결 문자열을
+#   DATABASE_URL 환경변수로 넣어주면 됨 (Render 유료 Starter+로 올려서 디스크를 쓰는 것도 대안).
+#
+# Neon/Supabase가 주는 연결 문자열은 보통 "postgres://"로 시작하는데, SQLAlchemy는
+# "postgresql://"만 인식해서 그대로 넣으면 조용히 에러 나므로 여기서 자동 변환해줌.
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./app.db")
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+# check_same_thread는 sqlite 전용 옵션이라, Postgres에 그대로 넘기면 연결 자체가 실패함.
+# sqlite일 때만 붙이도록 분기.
+_connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+# Postgres는 오래 안 쓰면 커넥션이 끊기는 경우가 있어서, 쓰기 전에 살아있는지 확인하는
+# pool_pre_ping을 켜둠 (sqlite에는 영향 없음).
+engine = create_engine(DATABASE_URL, connect_args=_connect_args, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
